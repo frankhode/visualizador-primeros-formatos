@@ -18,23 +18,28 @@ function searchMatches(){const terms=fold($('search').value).split(/\\s+/).filte
 function refreshFilters(changedKey=null){
  const selectors=[...$('filters').querySelectorAll('select')];
  const changedIndex=selectors.findIndex(s=>s.dataset.key===changedKey);
- if(changedIndex>=0)selectors.slice(changedIndex+1).forEach(s=>s.value='');
+ if(changedIndex>=0)selectors.slice(changedIndex+1).forEach(s=>{s.dataset.manual='';s.value='';});
  let eligible=searchMatches();
  for(const s of selectors){
-  const selected=s.value,counts=new Map();
+  const counts=new Map();
   for(const r of eligible)for(const v of new Set(values(r,s.dataset.key)))counts.set(v,(counts.get(v)||0)+1);
   const options=[...counts.keys()].sort((a,b)=>a.localeCompare(b,'es',{numeric:true}));
-  s.replaceChildren(new Option('Todos',''));
+  const manual=s.dataset.manual||'';
+  const selected=counts.has(manual)?manual:'';
+  if(manual&&!selected)s.dataset.manual='';
+  s.replaceChildren();
+  if(options.length!==1)s.add(new Option('Todos',''));
   for(const v of options)s.add(new Option(v+' ('+counts.get(v)+')',v));
-  s.value=counts.has(selected)?selected:'';
-  const wrap=s.closest('label');
-  // Una selección activa debe permanecer visible para poder quitarla.
-  wrap.hidden=!s.value&&options.length<=1;
-  if(s.value)eligible=eligible.filter(r=>values(r,s.dataset.key).includes(s.value));
+  // Un valor único se muestra seleccionado, pero no actúa como filtro implícito:
+  // puede haber fichas sin datos en este campo y no deben desaparecer.
+  s.value=options.length===1?options[0]:selected;
+  s.disabled=options.length===1;
+  s.closest('label').hidden=options.length===0;
+  if(selected)eligible=eligible.filter(r=>values(r,s.dataset.key).includes(selected));
  }
  return eligible;
 }
-function makeFilters(){for(const [key,label]of definitions){const wrap=el('label',label),select=el('select');select.dataset.key=key;select.add(new Option('Todos',''));select.onchange=()=>apply(true,key);wrap.append(select);$('filters').append(wrap);}}
+function makeFilters(){for(const [key,label]of definitions){const wrap=el('label',label),select=el('select');select.dataset.key=key;select.dataset.manual='';select.add(new Option('Todos',''));select.onchange=()=>{select.dataset.manual=select.value;apply(true,key);};wrap.append(select);$('filters').append(wrap);}}
 function apply(reset=true,changedKey=null){filtered=refreshFilters(changedKey);const key=$('sort').value;if(key!=='original')filtered.sort((a,b)=>String(a[key]||'').localeCompare(String(b[key]||''),'es',{numeric:true}));if(reset)page=0;renderGallery();}
 function message(target,text){target.replaceChildren(el('span',text,'message'));}
 async function preview(r,side){const url=imageURL(r,side);if(cache.has(url)){const v=cache.get(url);cache.delete(url);cache.set(url,v);return v;}
@@ -57,6 +62,6 @@ for(const [label,title,action]of [['−','Alejar',()=>zoom=Math.max(.25,zoom/1.2
 canvas.onpointerdown=e=>{if(!canvas.querySelector('img'))return;drag={x:e.clientX,y:e.clientY,px:x,py:y};canvas.setPointerCapture(e.pointerId);};canvas.onpointermove=e=>{if(drag){x=drag.px+e.clientX-drag.x;y=drag.py+e.clientY-drag.y;transform();}};canvas.onpointerup=canvas.onpointercancel=()=>drag=null;canvas.onwheel=e=>{e.preventDefault();zoom=Math.min(8,Math.max(.25,zoom*(e.deltaY<0?1.15:1/1.15)));transform();};panel.append(head,canvas);$('stage').append(panel);if(r[side==='front'?'frontName':'backName'])loadPreview(canvas,r,side,token);else message(canvas,'Sin archivo de '+(side==='front'?'frente':'dorso'));}}
 $('previous').onclick=()=>{if(current>0){current--;renderViewer();}};$('next').onclick=()=>{if(current<filtered.length-1){current++;renderViewer();}};$('close').onclick=()=>$('viewer').close();document.querySelectorAll('[data-view]').forEach(b=>b.onclick=()=>{view=b.dataset.view;renderStage();});
 document.addEventListener('keydown',e=>{if(!$('viewer').open||['INPUT','SELECT'].includes(e.target.tagName))return;if(e.key==='ArrowLeft')$('previous').click();if(e.key==='ArrowRight')$('next').click();});
-$('drive').onchange=()=>{try{localStorage.setItem('hlp-viewer-drive',$('drive').value);}catch(e){}renderGallery();if($('viewer').open)renderViewer();};let timer;$('search').oninput=()=>{clearTimeout(timer);timer=setTimeout(apply,180);};$('sort').onchange=()=>apply();$('clear').onclick=()=>{$('search').value='';$('filters').querySelectorAll('select').forEach(s=>s.value='');apply();};
+$('drive').onchange=()=>{try{localStorage.setItem('hlp-viewer-drive',$('drive').value);}catch(e){}renderGallery();if($('viewer').open)renderViewer();};let timer;$('search').oninput=()=>{clearTimeout(timer);timer=setTimeout(apply,180);};$('sort').onchange=()=>apply();$('clear').onclick=()=>{$('search').value='';$('filters').querySelectorAll('select').forEach(s=>{s.value='';s.dataset.manual='';});apply();};
 async function load(){if($('viewer').open)$('viewer').close();$('reload').disabled=true;$('count').textContent='Leyendo MySQL…';try{const response=await fetch('api.php',{cache:'no-store'}),data=await response.json();if(!response.ok)throw new Error(data.error||'No se pudo leer la base');records=data.records.map(r=>({...r,_search:fold(Object.entries(r).filter(([k])=>!['frontUrl','backUrl'].includes(k)).map(([,v])=>Array.isArray(v)?v.join(' '):typeof v==='object'?'':String(v??'')).join(' '))}));$('filters').replaceChildren();makeFilters();apply();}catch(e){$('count').textContent=e.message;}finally{$('reload').disabled=false;}}
 $('reload').onclick=load;load();
